@@ -66,7 +66,7 @@ public:
             );
         } else {
             Serial.printf(
-                "[P5-B1] interaction-full=issued generation=%lu\n", static_cast<unsigned long>(generation)
+                "[P5-B1] interaction-auto=issued generation=%lu\n", static_cast<unsigned long>(generation)
             );
         }
 
