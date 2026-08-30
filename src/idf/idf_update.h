@@ -57,5 +57,9 @@ bool launcherInstallAppToPartition(
     const String &sourcePath, const esp_partition_t *partition, size_t imageSize,
     LauncherUpdateProgress cb = nullptr
 );
+bool launcherInstallAppToPartition(
+    const String &sourcePath, const esp_partition_t *partition, uint32_t sourceOffset, size_t imageSize,
+    LauncherUpdateProgress cb = nullptr
+);
 
 #endif

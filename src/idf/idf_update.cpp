@@ -612,7 +612,8 @@ bool launcherRawUpdateStream(
 }
 
 bool launcherInstallAppToPartition(
-    const String &sourcePath, const esp_partition_t *partition, size_t imageSize, LauncherUpdateProgress cb
+    const String &sourcePath, const esp_partition_t *partition, uint32_t sourceOffset, size_t imageSize,
+    LauncherUpdateProgress cb
 ) {
     if (!launcherFirmwareInstallAllowed()) {
         launcherConsolePrintln("PM_INSTALL_FAIL source-validation install-disabled");
@@ -636,8 +637,19 @@ bool launcherInstallAppToPartition(
     if (cb) cb(0, imageSize);
     while (written < imageSize) {
         const size_t requested = std::min(sizeof(buffer), imageSize - written);
+        const uint64_t sourceReadOffset = static_cast<uint64_t>(sourceOffset) + written;
+        if (sourceReadOffset > 0xFFFFFFFFULL) {
+            launcherConsolePrintf(
+                "PM_INSTALL_FAIL source-read offset=%u expected=%u actual=%u\n",
+                static_cast<unsigned>(written),
+                static_cast<unsigned>(requested),
+                0U
+            );
+            esp_ota_abort(handle);
+            return false;
+        }
         const LauncherStorageFileResult readResult =
-            launcherStorageReadAt(sourcePath, written, buffer, requested);
+            launcherStorageReadAt(sourcePath, static_cast<uint32_t>(sourceReadOffset), buffer, requested);
         if (readResult != LauncherStorageFileResult::Ready) {
             launcherConsolePrintf(
                 "PM_INSTALL_FAIL source-read offset=%u expected=%u actual=%u\n",
@@ -689,4 +701,10 @@ bool launcherInstallAppToPartition(
     }
     launcherConsolePrintln("PM_INSTALL_BOOT_SELECTED");
     return true;
+}
+
+bool launcherInstallAppToPartition(
+    const String &sourcePath, const esp_partition_t *partition, size_t imageSize, LauncherUpdateProgress cb
+) {
+    return launcherInstallAppToPartition(sourcePath, partition, 0, imageSize, cb);
 }

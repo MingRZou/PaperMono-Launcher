@@ -7,6 +7,7 @@
 #include <esp_app_desc.h>
 #include <esp_app_format.h>
 
+#include <algorithm>
 #include <cstring>
 #include <vector>
 
@@ -17,6 +18,10 @@ constexpr size_t kPartitionTableBytes = 0x1000;
 constexpr size_t kPartitionEntryBytes = 32;
 constexpr uint16_t kPartitionMagic = 0x50AA;
 constexpr uint8_t kAppPartitionType = 0x00;
+constexpr uint8_t kDataPartitionType = 0x01;
+constexpr uint8_t kFactoryAppSubtype = 0x00;
+constexpr uint8_t kNvsDataSubtype = 0x02;
+constexpr uint8_t kPhyInitDataSubtype = 0x01;
 constexpr uint8_t kMaxImageSegments = 16;
 constexpr uint8_t kImageHashBytes = 32;
 
@@ -141,6 +146,93 @@ bool inspectFullFlashImage(const String &path, uint32_t fileBytes, ImageInfo &im
     return false;
 }
 
+bool partitionLabelEquals(const uint8_t *entry, const char *expected) {
+    char label[17] = {};
+    memcpy(label, entry + 12, 16);
+    return strcmp(label, expected) == 0;
+}
+
+bool sourceRegionIsErased(const String &path, uint32_t fileBytes, uint32_t offset, uint32_t declaredBytes) {
+    if (declaredBytes == 0 || offset >= fileBytes) return true;
+
+    const uint64_t presentBytes = std::min<uint64_t>(declaredBytes, fileBytes - offset);
+    uint8_t buffer[256] = {};
+    uint64_t cursor = 0;
+    while (cursor < presentBytes) {
+        const size_t request = static_cast<size_t>(std::min<uint64_t>(sizeof(buffer), presentBytes - cursor));
+        if (!readExact(path, static_cast<uint32_t>(static_cast<uint64_t>(offset) + cursor), buffer, request))
+            return false;
+        for (size_t index = 0; index < request; ++index) {
+            if (buffer[index] != 0xFF) return false;
+        }
+        cursor += request;
+    }
+    return true;
+}
+
+bool inspectF1FullFlashImage(const String &path, uint32_t fileBytes, ImageInfo &image) {
+    if (!spanFits(fileBytes, kPartitionTableOffset, kPartitionTableBytes)) return false;
+
+    uint8_t table[kPartitionTableBytes] = {};
+    if (!readExact(path, kPartitionTableOffset, table, sizeof(table))) return false;
+
+    bool terminated = false;
+    bool nvsSeen = false;
+    bool phyInitSeen = false;
+    size_t appEntries = 0;
+    bool candidateFound = false;
+
+    for (size_t entryOffset = 0; entryOffset + kPartitionEntryBytes <= sizeof(table);
+         entryOffset += kPartitionEntryBytes) {
+        const uint8_t *entry = table + entryOffset;
+        if ((entry[0] == 0xFF && entry[1] == 0xFF) || (entry[0] == 0xEB && entry[1] == 0xEB)) {
+            terminated = true;
+            break;
+        }
+        if (readLe16(entry) != kPartitionMagic) return false;
+
+        const uint8_t type = entry[2];
+        const uint8_t subtype = entry[3];
+        const uint32_t offset = readLe32(entry + 4);
+        const uint32_t declaredBytes = readLe32(entry + 8);
+
+        if (type == kAppPartitionType) {
+            if (++appEntries != 1 || subtype != kFactoryAppSubtype || offset == 0 || declaredBytes == 0 ||
+                !spanFits(fileBytes, offset, 1)) {
+                return false;
+            }
+
+            ImageInfo candidate;
+            if (!inspectAppImage(path, fileBytes, offset, candidate) || !candidate.valid ||
+                !candidate.esp32S3 || candidate.imageBytes == 0 || candidate.imageBytes > declaredBytes ||
+                !spanFits(fileBytes, candidate.offset, candidate.imageBytes)) {
+                return false;
+            }
+            image = candidate;
+            candidateFound = true;
+            continue;
+        }
+
+        if (type != kDataPartitionType) return false;
+
+        const bool isNvs = subtype == kNvsDataSubtype && partitionLabelEquals(entry, "nvs");
+        const bool isPhyInit = subtype == kPhyInitDataSubtype && partitionLabelEquals(entry, "phy_init");
+        if (isNvs) {
+            if (nvsSeen) return false;
+            nvsSeen = true;
+        } else if (isPhyInit) {
+            if (phyInitSeen) return false;
+            phyInitSeen = true;
+        } else {
+            return false;
+        }
+
+        if (!sourceRegionIsErased(path, fileBytes, offset, declaredBytes)) return false;
+    }
+
+    return terminated && appEntries == 1 && candidateFound;
+}
+
 InspectionResult inspectFirmware(const String &path) {
     InspectionResult result;
     if (launcherStorageFileSize(path, result.fileBytes) != LauncherStorageFileResult::Ready ||
@@ -222,6 +314,29 @@ bool launcherValidateFirmwareFile(const String &path, LauncherFirmwareValidation
     if (result.kind != FirmwareKind::AppImage || !result.app.valid || !result.app.esp32S3) return false;
     validation.kind = LauncherFirmwareKind::StandaloneApp;
     validation.esp32S3 = true;
+    validation.sourceOffset = 0;
     validation.imageBytes = result.app.imageBytes;
     return validation.fileBytes != 0 && validation.imageBytes != 0;
+}
+
+bool launcherValidateF1FirmwareFile(const String &path, LauncherFirmwareValidation &validation) {
+    validation = LauncherFirmwareValidation();
+
+    uint32_t fileBytes = 0;
+    if (launcherStorageFileSize(path, fileBytes) != LauncherStorageFileResult::Ready || fileBytes == 0)
+        return false;
+
+    ImageInfo app;
+    if (!inspectF1FullFlashImage(path, fileBytes, app) || !app.valid || !app.esp32S3 || app.imageBytes == 0 ||
+        !spanFits(fileBytes, app.offset, app.imageBytes)) {
+        return false;
+    }
+
+    validation.kind = LauncherFirmwareKind::F1EmbeddedApp;
+    validation.f1Eligible = true;
+    validation.esp32S3 = true;
+    validation.fileBytes = fileBytes;
+    validation.sourceOffset = app.offset;
+    validation.imageBytes = app.imageBytes;
+    return true;
 }

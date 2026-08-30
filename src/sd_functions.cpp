@@ -408,13 +408,24 @@ static void bindFileToKeyMenu(const String &path) {
 }
 #endif
 
+static bool paperMonoValidateInstallImage(const String &path, LauncherFirmwareValidation &validation) {
+    if (launcherValidateFirmwareFile(path, validation) &&
+        validation.kind == LauncherFirmwareKind::StandaloneApp && validation.esp32S3 &&
+        validation.sourceOffset == 0 && validation.imageBytes != 0 &&
+        validation.imageBytes <= validation.fileBytes) {
+        return true;
+    }
+
+    return launcherValidateF1FirmwareFile(path, validation) && validation.f1Eligible && validation.esp32S3 &&
+           validation.imageBytes != 0 && validation.sourceOffset <= validation.fileBytes &&
+           validation.imageBytes <= validation.fileBytes - validation.sourceOffset;
+}
+
 static bool paperMonoInstallEligible(const String &path, const String &upperFile) {
     if (!launcherFirmwareInstallAllowed() || !upperFile.endsWith(".BIN")) return false;
 
     LauncherFirmwareValidation validation;
-    return launcherValidateFirmwareFile(path, validation) &&
-           validation.kind == LauncherFirmwareKind::StandaloneApp && validation.esp32S3 &&
-           validation.imageBytes != 0 && validation.imageBytes <= validation.fileBytes;
+    return paperMonoValidateInstallImage(path, validation);
 }
 
 static bool confirmPaperMonoInstall() {
@@ -749,8 +760,7 @@ static bool installPaperMonoFixedAppFromSd(const String &path) {
     }
 
     LauncherFirmwareValidation image;
-    if (!launcherValidateFirmwareFile(path, image) || image.kind != LauncherFirmwareKind::StandaloneApp ||
-        !image.esp32S3 || image.imageBytes == 0 || image.imageBytes > image.fileBytes) {
+    if (!paperMonoValidateInstallImage(path, image)) {
         launcherConsolePrintln("PM_INSTALL_FAIL source-validation");
         return false;
     }
@@ -778,14 +788,18 @@ static bool installPaperMonoFixedAppFromSd(const String &path) {
 
     uint32_t reopenedBytes = 0;
     if (launcherStorageFileSize(path, reopenedBytes) != LauncherStorageFileResult::Ready ||
-        reopenedBytes < image.imageBytes) {
+        image.sourceOffset > reopenedBytes || image.imageBytes > reopenedBytes - image.sourceOffset) {
         launcherConsolePrintf("PM_INSTALL_FAIL source-open path=%s\n", path.c_str());
         return false;
     }
 
     pauseSdInstallInput();
     launcherConsolePrintf("PM_INSTALL_BEGIN image=%u\n", static_cast<unsigned>(image.imageBytes));
-    const bool ok = launcherInstallAppToPartition(path, payload, image.imageBytes, progressHandler);
+    if (image.sourceOffset != 0) {
+        launcherConsolePrintf("PM_INSTALL_SOURCE offset=%u\n", static_cast<unsigned>(image.sourceOffset));
+    }
+    const bool ok =
+        launcherInstallAppToPartition(path, payload, image.sourceOffset, image.imageBytes, progressHandler);
     resumeSdInstallInput();
     return ok;
 }
