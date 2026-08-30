@@ -41,6 +41,8 @@
     compile_sketch:
       name: Build ${{ matrix.board.env }}
       runs-on: ubuntu-latest
+      permissions:
+        contents: read
       env:
         PLATFORMIO_CORE_DIR: ${{ github.workspace }}/.pio/core
         PIP_DEFAULT_TIMEOUT: "120"
@@ -256,6 +258,9 @@
     post_compile_steps:
       name: Post-compile steps
       runs-on: ubuntu-latest
+      permissions:
+        actions: write
+        contents: write
       needs: compile_sketch
       if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') || github.ref_type == 'tag'
       steps:
@@ -357,6 +362,10 @@
 
     create_release:
       runs-on: ubuntu-latest
+      permissions:
+        actions: write
+        contents: write
+        issues: write
       environment: github_release
       needs: [compile_sketch]
       if: github.ref_type == 'tag'
