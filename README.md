@@ -1,4 +1,57 @@
-# Launcher
+# PaperMono-Launcher
+
+A PaperMono-focused derivative of Launcher for PaperMono hardware support,
+stability work, and PaperMono-specific UX and firmware-management features.
+
+**PaperMono Status: Hardware-validated / Active Development**
+
+This repository is an independent development line based on
+[bmorcelli/Launcher](https://github.com/bmorcelli/Launcher). It preserves the
+upstream authorship, history, and MIT license attribution. Upstream-contribution
+work is maintained separately in [MingRZou/Launcher](https://github.com/MingRZou/Launcher).
+
+This is not official M5Stack firmware, the upstream Launcher repository, or an
+officially supported bmorcelli release. It is active development rather than a
+stable production release.
+
+## PaperMono Hardware-Validated Features
+
+- Native M5Stack PaperMono support
+- Launcher UI, firmware browser, payload boot, and recovery
+- Hardware-validated PaperMono Auto E-Ink refresh policy
+- Periodic full-refresh cleanup
+- Standalone ESP32-S3 application installation
+- Strict F1 embedded-app installation from eligible simple single-app FullFlash wrappers
+- Hardware-validated return/recovery to Launcher
+
+### F1-v1 installation scope
+
+F1-v1 is intentionally narrow: an eligible simple single-app FullFlash wrapper
+may expose its embedded application to the existing protected payload install
+mechanism. This installs only the embedded application, not an entire flash
+image. Coupled multi-partition FullFlash packages that require additional
+assets, storage, filesystems, or multiple app partitions remain unsupported.
+
+## Hardware-Validated Milestones
+
+- `personal-eink-v1` — PaperMono Auto Refresh Policy v1
+- `personal-f1-install-v1` — strict F1 embedded-app installation v1
+
+These are milestone tags for the current development line, not a formal
+semantic-version release.
+
+## Development Relationship
+
+| Repository | Role |
+| --- | --- |
+| [MingRZou/PaperMono-Launcher](https://github.com/MingRZou/PaperMono-Launcher) | Personal PaperMono-focused development |
+| [MingRZou/Launcher](https://github.com/MingRZou/Launcher) | Fork used for upstream contributions |
+| [bmorcelli/Launcher](https://github.com/bmorcelli/Launcher) | Upstream project |
+
+The upstream documentation below remains useful for the broader Launcher
+feature set and supported devices. See [LICENSE](LICENSE) for the preserved
+MIT license.
+
 Application launcher for M5Stack, Lilygo, CYD, Marauder, and ESP32 devices.
 
 
@@ -477,5 +530,4 @@ Things that need to be done in future updates
 * 1.0.1:
      * Fixed black screen and keyboard capture on Cardputer.
 </details>
-
 
