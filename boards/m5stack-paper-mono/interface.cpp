@@ -71,7 +71,7 @@ public:
         }
 
         const PaperMonoRefreshResult result =
-            PaperMonoBsp::instance().requestRefresh(PaperMonoRefreshRequest::Full);
+            PaperMonoBsp::instance().requestRefresh(PaperMonoRefreshRequest::Auto);
         Serial.printf(
             "[P5-B1] refresh-result status=%u executed=%u generation=%lu\n",
             static_cast<unsigned>(result.status),
